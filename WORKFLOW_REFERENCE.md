@@ -37,6 +37,13 @@ Lobster intelligently resolves the `command` string in each step:
 1. **Internal Commands:** Lobster first checks its internal registry. Commands like `gog.gmail.search`, `email.triage`, `where`, and `pick` run directly within the Lobster process. This is faster and preserves rich JSON data structures between steps.
 2. **Shell Commands:** If the command is not found in the registry, Lobster falls back to executing it via `/bin/sh`.
 
+### Discovering Supported Commands
+You can see the full list of internal Lobster commands available on your system by running:
+```bash
+lobster commands.list
+```
+This will output a JSON list of all registered commands, their descriptions, and the arguments they accept.
+
 **Example (Internal Commands):**
 ```yaml
 steps:
