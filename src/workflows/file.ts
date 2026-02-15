@@ -53,6 +53,7 @@ type RunContext = {
   stderr: NodeJS.WritableStream;
   env: Record<string, string | undefined>;
   mode: 'human' | 'tool' | 'sdk';
+  registry?: any;
 };
 
 export type WorkflowResumePayload = {
