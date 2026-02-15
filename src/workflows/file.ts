@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 
 import { encodeToken } from '../token.js';
 import { readStateJson, writeStateJson } from '../state/store.js';
+import { parsePipeline } from '../parser.js';
+import { runPipeline } from '../runtime.js';
 
 export type WorkflowFile = {
   name?: string;
@@ -180,10 +182,40 @@ export async function runWorkflowFile({
     const env = mergeEnv(ctx.env, workflow.env, step.env, resolvedArgs, results);
     const cwd = resolveCwd(step.cwd ?? workflow.cwd, resolvedArgs);
 
-    const { stdout } = await runShellCommand({ command, stdin: stdinValue, env, cwd });
-    const json = parseJson(stdout);
+    if (ctx.registry) {
+      const pipeline = parsePipeline(command);
+      const firstStage = pipeline[0];
+      const cmdObj = firstStage ? ctx.registry.get(firstStage.name) : null;
 
-    results[step.id] = { id: step.id, stdout, json };
+      if (cmdObj) {
+        // Internal command - run via pipeline runtime
+        const parsedStdin = typeof stdinValue === 'string' ? parseJson(stdinValue) : null;
+        const input = Array.isArray(parsedStdin)
+          ? asAsyncIterable(parsedStdin)
+          : stdinValue
+            ? asAsyncIterable([parsedStdin ?? stdinValue])
+            : undefined;
+
+        const res = await runPipeline({
+          pipeline,
+          registry: ctx.registry,
+          stdin: ctx.stdin,
+          stdout: ctx.stdout,
+          stderr: ctx.stderr,
+          env,
+          mode: ctx.mode,
+          input,
+        });
+        results[step.id] = { id: step.id, json: res.items, stdout: JSON.stringify(res.items) };
+      } else {
+        const res = await runShellCommand({ command, stdin: stdinValue, env, cwd });
+        results[step.id] = { id: step.id, stdout: res.stdout, json: parseJson(res.stdout) };
+      }
+    } else {
+      const res = await runShellCommand({ command, stdin: stdinValue, env, cwd });
+      results[step.id] = { id: step.id, stdout: res.stdout, json: parseJson(res.stdout) };
+    }
+
     lastStepId = step.id;
 
     if (isApprovalStep(step.approval)) {
@@ -462,6 +494,10 @@ function readLine(stdin: NodeJS.ReadableStream) {
 
     stdin.on('data', onData);
   });
+}
+
+async function* asAsyncIterable(items: any[]) {
+  for (const item of items) yield item;
 }
 
 async function runShellCommand({
